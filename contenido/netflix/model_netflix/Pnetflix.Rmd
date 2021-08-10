@@ -1,0 +1,481 @@
+---
+title: "Práctica netflix"
+author: "Sergio Garcia Puertas, Bartomeu Ramis Tarragó, David Cantero Tirado, Joan Jorquera Riera"
+date: "7/1/2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r, message=FALSE}
+library(tidyverse)
+```
+```{r}
+filas_ID_combined_all=read_csv("../filas_ID_combined_all.txt")
+```
+Miramos la estructura de los datos
+
+```{r}
+glimpse(filas_ID_combined_all)
+```
+Miramos cuantas filas hay para cada valor de data
+
+```{r}
+table(filas_ID_combined_all$data)
+```
+Escogemos una muestra de 250 elementos en base a la semilla generada por nuestros DNI
+
+```{r}
+set.seed(23307791)
+muestra_grupo=sample(1:17770,250, replace=FALSE)
+head(muestra_grupo)
+```
+## Cuestión 1
+
+### Punto 1 - Contextualiza, a partir de la información de Kaggle, los datos de los que disponemos. Qué datos contiene cada uno de los ficheros y para qué pueden resultar importantes a Netflix.
+
+Hemos obtenido 4 archivos desde Kaggle, que tienen el nombre de "combined_data_?". Por otro lado también tenemos los archivos "filas_ID_combined_all" y "movie_titles", proporcionados por el profesor.
+La "?" de "combined_data_?" coge los valores del 1 al 4. Estos 4 archivos tienen la misma estructura:
+
+ID película:
+
+  customerID, valoración, fecha de la valoración
+  
+  customerID, valoración, fecha de la valoración
+  
+  .
+  
+  .
+  
+  .
+  
+  
+Para cada película, habrá tantas filas como valoraciones tenga.
+
+
+El archivo "filas_ID_combined_all" tiene los siguientes atributos en cada fila:
+
+  X1 -> id de la película seguido por ':'
+  
+  fila -> nº de fila del archivo de Kaggle "combined_data_?" a la que hace referencia
+  
+  ID -> id de la película
+  
+  fila_final -> nº de fila en la que se encuentra la última referencia a esta película
+  
+  data -> número del archivo de Kaggle en que se encuentra la película.
+  
+El archivo "movie_titles" tiene los siguientes atributos en cada fila:
+
+ id de la película, fecha de estreno, título de la película
+
+
+### Punto 2 - Leer cada película del archivo correspondiente y guardarlas, adecuadamente, en un mismo archivo para su futuro tratamiento.
+
+Extraemos los datos de las 250 películas que hemos seleccionado y los dividimos en 4 tablas diferentes según el valor de data.
+```{r}
+muestra_data1 <- filter(filas_ID_combined_all[muestra_grupo,], data==1, .preserve = TRUE)
+muestra_data2 <- filter(filas_ID_combined_all[muestra_grupo,], data==2, .preserve = TRUE)
+muestra_data3 <- filter(filas_ID_combined_all[muestra_grupo,], data==3, .preserve = TRUE)
+muestra_data4 <- filter(filas_ID_combined_all[muestra_grupo,], data==4, .preserve = TRUE)
+
+head(muestra_data1)
+```
+
+Para cada tabla leemos las películas en su archivo correspondiente de netflix junto a sus valoraciones y las guardamos en el fichero "muestrapelículas.txt".
+Leemos cada archivo por separado para no sobrecargar la memoria.
+
+```{r}
+if (file.exists("muestrapeliculas.txt")) {
+  file.remove("muestrapeliculas.txt")
+}
+
+# Leemos el primer archivo de Netflix
+fileName <- "../combined_data_1.txt"
+archivo <- file(fileName,open="r")
+datos1 <-readLines(archivo)
+
+# Para cada fila de muestra_data1 cogemos la información indicada de "combined_data_1.txt"
+# y la escribimos en "muestrapelículas.txt"
+for(i in 1:nrow(muestra_data1)){
+  aux <- datos1[seq(as.numeric(muestra_data1[i,2]),as.numeric(muestra_data1[i,4]))]
+  write(aux,"muestrapeliculas.txt", append=TRUE)
+}
+
+# Cerramos el archivo y liberamos la memoria
+remove(datos1)
+close(archivo)
+
+# Repetimos el proceso para el resto de archivos
+fileName <- "../combined_data_2.txt"
+archivo <- file(fileName,open="r")
+datos2 <-readLines(archivo)
+
+for(i in 1:nrow(muestra_data2)){
+  aux <- datos2[seq(as.numeric(muestra_data2[i,2]),as.numeric(muestra_data2[i,4]))]
+  write(aux,"muestrapeliculas.txt", append=TRUE)
+}
+remove(datos2)
+close(archivo)
+
+fileName <- "../combined_data_3.txt"
+archivo <- file(fileName,open="r")
+datos3 <-readLines(archivo)
+
+for(i in 1:nrow(muestra_data3)){
+  aux <- datos3[seq(as.numeric(muestra_data3[i,2]),as.numeric(muestra_data3[i,4]))]
+  write(aux,"muestrapeliculas.txt", append=TRUE)
+}
+remove(datos3)
+close(archivo)
+
+fileName <- "../combined_data_4.txt"
+archivo <- file(fileName,open="r")
+datos4 <-readLines(archivo)
+
+for(i in 1:nrow(muestra_data4)){
+  aux <- datos4[seq(as.numeric(muestra_data4[i,2]),as.numeric(muestra_data4[i,4]))]
+  write(aux,"muestrapeliculas.txt", append=TRUE)
+}
+remove(datos4)
+close(archivo)
+```
+
+### Punto 3 - Construir el modelo de datos siguiendo las instrucciones del taller de ejemplo de netflix y generar la tibble netflix
+
+Leemos la información almacenada en "muestrapeliculas.txt".
+
+```{r}
+fileName <- "muestrapeliculas.txt"
+netflix = read_tsv(fileName, col_names = FALSE)
+```
+
+
+```{r}
+# Añadimos una columna con el nº de fila
+netflix=netflix%>% mutate(fila=row_number())
+
+# Cogemos de la tabla netflix las filas que contienen un ID de pelicula
+# y las añadimos como una nueva columna
+filas=grep(":",netflix$X1)
+filas_ID= netflix %>%
+  filter( fila %in% filas ) %>%
+  mutate(ID=as.integer(gsub(":","",X1)))
+
+# Guardamos cuantas valoraciones tiene cada pelicula
+reps=diff(c(filas_ID$fila,max(netflix$fila)+1))
+
+# Asignamos a cada valoracion la id de su pelicula correspondiente en la
+# columna ID_film, eliminamos las filas que contienen unicamente un ID y 
+# separamos los datos de las valoraciones en las columnas ID_user, Score y date
+netflix=netflix %>%
+  mutate(ID1=rep(filas_ID$X1,times=reps)) %>%
+  filter(!(fila %in% filas)) %>%
+  select(-fila) %>%
+  separate(X1,into=c("ID_user","Score","date"),sep=",") %>%
+  mutate(Score=as.integer(Score)) %>%
+  separate(col = ID1,into=c("ID_film","borrar")) %>%
+  select(-borrar) %>% mutate(ID_film=as.numeric(ID_film))
+```
+
+Ahora la tabla netflix tiene un formato adecuado para su tratamiento.
+
+```{r}
+head(netflix)
+```
+
+
+### Punto 4 - Leer el fichero "movie_titles.csv" y hacer un inner_join para disponer del título y año de estreno de cada película.
+
+Leemos el archivo utilizando expresiones regulares para poder leer títulos de películas que contengan comas.
+
+```{r}
+lines   <- readLines("../movie_titles.csv")
+pattern <- "^(\\d+),([^,]+),(.*)$"
+matches <- regexec(pattern, lines)
+
+bad.rows <- which(sapply(matches, length) == 1L)
+if (length(bad.rows) > 0L) stop(paste("bad row: ", lines[bad.rows]))
+
+data <- regmatches(lines, matches)
+film_names <- as.data.frame(matrix(unlist(data), ncol = 4L, byrow = TRUE)[, -1L])
+
+```
+
+Cambiamos el tipo de dato de los atributos.
+
+```{r}
+colnames(film_names) <- c("ID_film", "year", "title")
+film_names$ID_film <- as.integer(film_names$ID_film)
+film_names$year <- as.integer(film_names$year)
+
+summary(film_names)
+```
+
+Combinamos con un inner_join los datos de netflix y film_names para añadir los títulos de las películas y su año de estreno.
+
+```{r}
+netflix_f <- inner_join(netflix, film_names, by="ID_film")
+summary(netflix_f)
+```
+
+### Punto 5 - Guardar los datos procesado en un fichero csv, con el formato adecuado para utilizarlo en el siguiente apartado.
+
+Finalmente, formateamos y almacenamos los datos ya procesados en un fichero para su posterior uso.
+
+```{r}
+netflix_f$ID_user <- as.integer(netflix_f$ID_user)
+netflix_f$date <- as.Date(netflix_f$date)
+netflix_f$ID_film <- as.integer(netflix_f$ID_film)
+write.csv(netflix_f, "Netflix_final.csv" )
+```
+
+## Cuestión 2
+
+Cargamos los datos que hemos preparado en el apartado anterior.
+
+```{r}
+netflix <- read.csv("Netflix_final.csv", header = TRUE)
+str(netflix,width=80,strict.width="cut")
+```
+
+### Punto 1 - Justifica para cada una de las variables de la tabla anterior el tipo de dato que mejor se ajusta a cada una de ellas: numérico, ordinal, categórico….
+
+ID_user: Ya que el número del usuario no representa un valor numérico, sino que sirve para identificar al usuario, ha de ser de tipo categórico.
+
+Score: Al tratarse de una puntuación entera, el tipo que más se ajusta es el entero.
+
+ID_film: Ya que el numero de la película no representa un valor numérico, sino que sirve para identificar la película. Esto sumado a que su valor se repite por cada valoración que haya recibido la película hace que le asignemos el tipo categórico.
+
+year: Los años son valores enteros.
+
+title: Se utiliza para hacer referencia a una película. Además, se repite por cada valoración a dicha película, por tanto, se puede transformar en una variable categorica.
+
+date: Será de tipo Date.
+
+```{r}
+netflix <- select(netflix, -X)
+
+netflix$ID_user <- as.factor(netflix$ID_user)
+netflix$ID_film <- as.factor(netflix$ID_film)
+netflix$title <- as.factor(netflix$title)
+
+netflix$date <- as.Date(netflix$date)
+
+str(netflix,width=80,strict.width="cut")
+```
+
+### Punto 2 - Estudia la distribución del numero de películas estrenadas por año. Realiza un gráfico de muestre esta distribución haciendo los ajustes necesarios (agrupaciones, cambios de escala, transformaciones…)
+
+Mostramos un gráfico que muestra el número de estrenos por año.
+  
+```{r}
+select(netflix,ID_film,year) %>% distinct %>%
+ggplot + stat_count(mapping = aes(x = year), fill="#EC7063") +
+  ggtitle("Fig.0: Número de películas estrenadas por año")
+```
+En el gráfico podemos observar como Netflix parece estar más interesado en películas actuales (teniendo en cuenta que estos datos solo llegan hasta 2006) aunque también contiene un número reducido de películas clásicas.
+
+### Punto 3 - Investiga la librería lubridate (o la que consideréis para manipulación de datos) y utilízala para transformar la columna de la fecha de la valoración en varias columnas por ejemplo year,month, week, day_of_week.
+
+```{r, message=FALSE}
+library(lubridate)
+```
+```{r}
+colnames(netflix)[5] <- "release_year"
+netflix <- mutate(netflix, year = year(date), 
+                  month = month(date, label=TRUE), 
+                  week = week(date), 
+                  day_of_week = wday(date, week_start = 1, label = TRUE,abbr = FALSE))
+str(netflix,width=80,strict.width="cut")
+```
+### Punto 4 - Genera una tabla que para cada película nos dé el número total de valoraciones, la suma de las valoraciones, la media de las valoraciones, y otros estadísticos de interés (desviación típica, moda , mediana).
+
+Calculamos para cada película su numero total de valoraciones, suma de puntuación y su valoración media.
+También calculamos la desviación típica de las valoraciones, la moda y la mediana. Toda esta información la guardamos en la tabla estadísticos.
+
+```{r}
+#Definimos una funcion para calcular la moda
+getmode <- function(v) {
+             uniqv <- unique(v)
+             uniqv[which.max(tabulate(match(v, uniqv)))]
+}
+
+estadisticos <- tally(group_by(netflix,ID_film))
+colnames(estadisticos) <- c("ID_film", "count")
+#La función aggregate se usa para calcular las nuevas columnas, agrupando por ID de film.
+estadisticos <- mutate(estadisticos,
+        sum=aggregate(netflix$Score, by=list(Category=netflix$ID_film), FUN=sum)$x,
+        mean=sum/count,
+        sd=aggregate(netflix$Score, by=list(Category=netflix$ID_film), FUN=sd)$x,
+        median=aggregate(netflix$Score, by=list(Category=netflix$ID_film), FUN=median)$x,
+        mode=aggregate(netflix$Score, by=list(Category=netflix$ID_film), FUN=getmode)$x
+        )
+
+head(estadisticos)
+```
+### Punto 5 - De las cinco películas con más número total de valoraciones, compara sus estadísticos y distribuciones (histogramas, boxplot, violin plot,…)
+Primero, obtendremos la lista con los films más valorados, sus estadísticos y sus títulos.
+```{r, fig.show="hold", out.width="50%"}
+film_names_factor <- select(film_names,ID_film,title)
+film_names_factor$ID_film <- as.factor(film_names$ID_film)
+
+masvaloradas <- estadisticos %>% arrange(desc(count)) %>% head(5)
+masvaloradas <- inner_join(masvaloradas, film_names_factor, "ID_film")
+
+masval_netflix <- netflix %>% filter(ID_film %in% masvaloradas$ID_film)
+masvaloradas
+```
+```{r, fig.show="hold", out.width="50%"}
+ggplot(data=masval_netflix, mapping = aes(x = title, y = Score)) +  geom_boxplot() + 
+  coord_flip() + ggtitle("Fig.1: Distribución de las puntuaciones por película")
+ggplot(data=masval_netflix, mapping = aes(x = title, y = date)) + geom_violin() + 
+  coord_flip() + ggtitle("Fig.2: Densidad de valoraciones por fecha de publicación")
+```
+La figura 1 muestra la distribución de las notas. Podemos observar como las películas más populares tienen, por lo general, notas altas (entre 3 y 5). Como es lógico, estas peliculas no se han hecho populares por ser malas.
+
+La figura 2 muestra la distribución de las fechas en las que se hicieron las valoraciones. Aquí vemos como pasa cierto tiempo entre que una película es añadida al catálogo y entre que se populariza. Además, también podemos suponer que, alrededor del 2004 Netflix tuvo un auge de clientes nuevos.
+
+```{r, fig.show="hold", out.width="50%"}
+ggplot(data=masvaloradas, mapping = aes(x = title, y=sd)) + geom_col(fill="#EC7063") + 
+  ggtitle("Fig.3: Comparación de la esviación estándar") + 
+  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1)) 
+ggplot(data=masval_netflix, mapping = aes(x = date)) + geom_histogram(fill="#EC7063") + 
+  ggtitle("Fig.4: Valoraciones totales por fecha de publicación")
+```
+En la figura 3, comparamos la desviación estándar de las 5 películas más valoradas. Como vemos, esta desviación es bastante similar. El film donde las notas de las valoraciones són más homogenias, es decir, la desviación es menor, es "Schindler's List", con una desviación típica ligeramente superior a 0,75.
+
+Por último, vemos claramente en la figura 4, que se confirma la hipótesis de la figura 2: Netflix sufrió un auge de usuarios, y por tanto de valoraciones, alrededor del 2004.
+
+### Punto 6 - Investiga la distribución de valoraciones por día de la semana y por mes.¿Qué meses y días de la semana se valoran más películas en netflix?
+
+```{r, fig.show="hold", out.width="50%"}
+ggplot(data=netflix, mapping = aes(x = month)) + 
+  geom_bar(fill="#EC7063") + 
+  ggtitle("Fig.5: Número de valoraciones por meses")
+ggplot(data=netflix, mapping = aes(x = day_of_week)) + 
+  geom_bar(fill="#EC7063") + 
+  ggtitle("Fig.6: Número de valoraciones por días de la semana")
+```
+Suponemos, viendo la figura 6, que en los fines de semana cuando la gente tiene más tiempo libre, realizan otras actividades (probablemente más sociales fuera de casa) en lugar de ver netflix. Por tanto, los dias entre semana al estar en casa aprovechan para ver películas.
+
+Como la mayoría de las valoraciones se han hecho en un plazo de 2 años, no podemos sacar conclusiones claras, a partir de la figura 5, sobre la distribución de las valoraciones según los meses.
+
+### Punto 7 - Genera una tabla agrupada por película y año del número de valoraciones. Representa la tabla gráficamente para las 10 películas con mayor número de valoraciones.
+
+```{r}
+#Obtenemos para cada pelicula y cada año, cuantas valoraciones se han hecho
+valoracionXaño <- netflix %>% group_by(ID_film,year) %>% tally
+
+#Añadimos a la tabla el título de cada película
+valoracionXaño <- valoracionXaño %>% inner_join(film_names_factor,by="ID_film")
+#Dejamos solo los datos de las 10 películas con más valoraciones
+diezmasvaloradas <- estadisticos %>% arrange(desc(count)) %>% head(10)
+aux <- valoracionXaño %>% 
+  filter(ID_film %in% diezmasvaloradas$ID_film) %>% 
+  arrange(desc(n))
+aux$year <- as.factor(aux$year)
+#Dibujamos la gráfica con la información obtenida
+ggplot(data=aux, mapping = aes(x = title, y=n, fill=year)) + 
+  geom_bar(stat="identity", position=position_dodge2(preserve = "single")) +
+  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1)) + 
+  scale_fill_manual(values=c("#2C3E50","#AF7AC5","#DC7633",
+                             "#48C9B0","#F4D03F","#5DADE2","#EC7063")) + 
+  ggtitle("Fig.7: Número de valoraciones por año y película") 
+```
+
+### Punto 8 - Distribución del score promedio por año de las 10 películas con mayor número de valoraciones.
+
+```{r}
+#Calculamos la media de las valoraciones para cada película y cada año
+aux2 <- aggregate(netflix$Score, by=list(title=netflix$title,ID_film=netflix$ID_film,
+                                         year=netflix$year), FUN=mean)
+#Nos quedamos solo con las 10 películas más valoradas
+aux2 <- aux2 %>% 
+  filter(ID_film %in% diezmasvaloradas$ID_film) %>% 
+  arrange(desc(x))
+aux2$year <- as.factor(aux2$year)
+
+ggplot(data=aux2, mapping = aes(x = title, y=x, fill=year)) + 
+  geom_bar(stat="identity", position=position_dodge2(preserve = "single")) +
+  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1)) + 
+  scale_fill_manual(values=c("#2C3E50","#AF7AC5","#DC7633",
+                             "#48C9B0","#F4D03F","#5DADE2","#EC7063")) +
+  ggtitle("Fig.8: Valoración media por película y año")
+```
+Como podemos observar, las notas que se dan a una película no varían demasiado en función del año.
+
+### Punto 9 - Realiza algún gráfico o estudio estadístico adicional que consideres informativo en base al análisis exploratorio anterior
+
+
+```{r}
+ggplot(data=aux, aes(x=year, y=n, group=title)) +
+  geom_line(aes(color=title))+
+  geom_point(aes(color=title)) + 
+  ggtitle("Fig.9: Evolución del número de valoraciones por película")
+```
+
+A continuación vamos a mirar cuantas valoraciones hacen los usuarios en cada fecha. En concreto nos centraremos en los 5 usuarios con más valoraciones totales.
+
+```{r, out.height="30%", fig.align='center'}
+usuarios <- tally(group_by(netflix,ID_user))
+usuarios <- arrange(usuarios,desc(n))
+usuarios <- head(usuarios,5)
+
+usuariosFechas <- tally(group_by(netflix,ID_user,date))
+usuariosFechas <- arrange(usuariosFechas,desc(n))
+
+usuariosFechas <-subset(usuariosFechas, usuariosFechas$ID_user %in% usuarios$ID_user )
+
+ggplot(data=usuariosFechas, aes(x=date, y=n, group=ID_user)) +
+  geom_line(aes(color=ID_user)) +
+  geom_point(aes(color=ID_user)) + 
+  ggtitle("Fig.10: Valoraciones de los usuarios por fecha")
+```
+
+A partir de los datos que tenemos no se puede realizar un estudio basado en las fechas en las que se ven las películas. Como podemos observar en el gráfico anterior, muchas de las valoraciones no se realizan el mismo dia en que el usuario ve la película ya que probablemente una persona no haya visto 78 peliculas el mismo día.
+
+```{r, out.height="30%", fig.align='center'}
+sumaValoraciones <- tally(group_by(netflix,year, month))
+sumaValoraciones$date <- paste(sumaValoraciones$year," ",sumaValoraciones$month)
+sumaValoraciones$date <- as.factor(sumaValoraciones$date)
+  
+ggplot(sumaValoraciones, aes(x=date, y=cumsum(n))) + geom_point()+
+  scale_x_discrete(limits=sumaValoraciones$date) +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0),text = element_text(size=8)) + 
+  ggtitle("Fig.11: Evolución del número total de valoraciones")
+```
+Aqui podemos ver la evolución de la popularidad y uso de netflix. A partir de 2004 aumenta el ratio de crecimiento de la cantidad de valoraciones que se hacen al mes indicando una mayor cantidad de clientes.
+
+A continuación intentaremos realizar un clustering en el que agrupemos los usuarios en base a las películas que han visto con tal de poder hacer recomendaciones personalizadas. Para la implementación de un sistema de recomendación sería más óptimo agrupar las películas en función de sus temáticas. Así, si un usuario da una buena valoración a una película, se le podrían recomendar más películas del mismo cluster. En nuestro caso, no disponemos de datos que nos permitan evaluar la similitud entre películas, por lo que utilizaremos un enfoque distinto. Sabiendo qué valoración ha dado cada usuario a cada película podemos hacer comparaciones entre usuarios y de esta forma calcular una "similitud" entre usuarios. El sistema de recomendación funcionaria de manera que a un usuario se le recomendarían películas a las que otro usuario de su mismo cluster ha dado una buena valoración.
+
+```{r}
+#Obtener tabla con el formato correcto (Id_user, puntuacion_peli1, puntuacion_peli2, ...)
+model.df <- netflix %>% select(c(ID_user, title, Score)) %>% spread( title, Score)
+```
+
+En model.df tenemos una fila por usuario con la valoración que le ha dado a cada película. Si alguna no la ha valorado, aparece como NA.
+```{r}
+#Generar matriz de distancias entre usuarios
+#No hace falta normalizar los datos porque todos los atributos son notas de películas)
+muestra = sample(1:310843,10000, replace=FALSE)
+model.reduced <- model.df[muestra,]
+model.reduced <- select(model.reduced, -ID_user)
+model.reduced[is.na(model.reduced)]=0
+dis <- dist(model.reduced , method="euclidean")
+```
+
+```{r, fig.show='hold'}
+hc <- hclust(dis, method = "complete")
+plot(hc, labels=FALSE, hang=-1)
+rect.hclust(hc, k=10)
+groups <- cutree(hc, k=10)
+```
+Tras este proceso, obtenemos un modelo de clustering jerárquico con 10 clusters. Cada uno de estos define un "perfil de usuario", es decir, cada conjunto representan un grupo de clientes con gustos "similares".
+Como ya hemos explicado anteriormente, las fechas resultan poco útiles, pues no representan el dia real en que cada usuario vio la película. Esto por si solo nos obliga a basarnos completa y exclusivamente en las valoraciones. Otro aspecto a considerar, es la escasez de puntuaciones de cada usuario. La gran mayoría de estos solo han valorado entre 1 y 2 películas, y por tanto, resulta muy complejo determinar de una forma minímamente concreta sus gustos. Es por esto, que al usar las técnicas de clustering, muchos de estas agrupaciones de clientes están formadas por un solo usuario.
+Además, por problemas computacionales, al haber necesitado reducir la muestra de clientes, se nos ha limitado aún más a la hora de poder analizar estos datos.
+
+Tras probar varios tipos de clustering cambiando la distancia utilizada y probando distintos métodos de linkage, hemos decidido dejar en el documento la versión que nos ha dado mejores resultados. Hemos decidido agrupar a los usuarios en 10 clusters, pero por los datos que tenemos para resolver el problema, los grupos que se diferencian no son útiles ya que hay un grupo inmenso, con prácticamente todos los usuarios, y 9 grupos muy pequeños. Por tanto estos clusters no recomendarían películas adecuadamente.
